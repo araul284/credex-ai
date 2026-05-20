@@ -13,7 +13,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^20.19.41",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-router-dom": "^5.3.3",
@@ -36,4 +36,3 @@
     "react-router-dom": "^7.15.0"
   }
 }
-
