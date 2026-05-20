@@ -50,7 +50,6 @@ export async function saveAudit(
     user_email: userEmail ?? null,
     pricing_snapshot: pricingSnapshot,
     email_sent: false,
-    unsubscribed: false,
   });
 }
 
