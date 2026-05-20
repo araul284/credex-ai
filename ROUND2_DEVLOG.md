@@ -10,7 +10,7 @@ Never made a PR before. Learned `checkout -b` creates branch, PR stays open for 
 
 ## 2026-05-20 15:20 — Architecture outline
 
-Mapped files to touch: new tables in supabase/migrations, aoi/admin/update-pricing.ts, api/cron/detect-changes.ts, src/lib/pricing.ts, src/lib/audit-store.ts, src/pages/RerunAuditPage.tsx (are subjected to change as they are what I thought of the expected architecture).
+Mapped files to touch: new tables in supabase/migrations, api/admin/update-pricing.ts, api/cron/detect-changes.ts, src/lib/pricingDetector.ts, src/lib/audit-store.ts, src/pages/RerunAuditPage.tsx (are subjected to change as they are what I thought of the expected architecture).
 
 Note: In college for exam from 10:00-15:00, no laptop. Used phone notes for planning only. No code written yet.
 
@@ -19,5 +19,16 @@ Note: In college for exam from 10:00-15:00, no laptop. Used phone notes for plan
 Travel time home. 3h no coding. Will start DB migration first thing.
 
 
-## 2026-05-20 19:50 — Start coding
+## 2026-05-20 19:50 — Start DB schema
 
+Updated Supabase.ts for audit storage of user emails and pricing changes. Started coding by writing the migration `202605202043_round2_reaudit.sql`. Added `user_email`, `pricing_snapshot`, and `email_sent` to the `audits` table, with `IF NOT EXISTS` so it is safe to re-run.
+
+
+## 2026-05-20 20:45 — Added email trigger and pricing change detection
+
+Built out `email.ts` for Resend and wrote `pricingDetector.ts` to actually compare the old vs new pricing and trigger the email. Also had to tweak `tsconfig.json` to include node types since `process.env` was throwing TS errors.
+
+
+## 2026-05-20 21:40 — Vercel cron endpoint
+
+Created the serverless endpoint at `api/cron/detect-changes.ts` to run the detector. Pulled in `@vercel/node` so I could type the request and response properly. Added auth with a `CRON_SECRET` env var because Vercel crons are public by default. Also updated `vercel.json` to schedule it for 9am UTC every Monday and kept the SPA rewrites intact so the React routes don't break.
