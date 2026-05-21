@@ -11,7 +11,7 @@
 import { useRef, useState } from 'react';
 import { Share2, Download, RotateCcw, Info, ArrowRight } from 'lucide-react';
 import type { AuditResult, AuditFinding } from '../types';
-import { saveAudit } from '../lib/supabase';
+import { supabase, capturePricingSnapshot } from '../lib/supabase';
 
 interface AuditResultsProps {
   audit: AuditResult;
@@ -105,12 +105,39 @@ export default function AuditResults({ audit, onStartOver, shareUrl }: AuditResu
   // ── Round 2: subscribe saves email to the audit row ──────────────────────
   async function handleSubscribe() {
     if (!email || subscribing) return;
+
+    if (!email.includes('@') || !email.includes('.')) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+
     setSubscribing(true);
     try {
-      await saveAudit(audit, email);
+      const { error } = await supabase!.from('audits').upsert({
+        id: audit.id,
+        input: audit.input,
+        findings: audit.findings,
+        total_monthly_savings: audit.totalMonthlySavings,
+        total_annual_savings: audit.totalAnnualSavings,
+        ai_summary: audit.aiSummary,
+        is_optimal: audit.isOptimal,
+        created_at: audit.createdAt,
+        user_email: email,
+        pricing_snapshot: capturePricingSnapshot(),
+        // Do NOT reset email_sent here — only set it on new rows
+      });
+ 
+      if (error) {
+        console.error('Supabase upsert error:', error);
+        alert(`Failed to save: ${error.message}`);
+        setSubscribing(false);
+        return;
+      }
+ 
       setSubscribed(true);
-    } catch {
-      setSubscribed(true); // still mark as subscribed visually; localStorage fallback ran
+    } catch (err) {
+      console.error('handleSubscribe error:', err);
+      alert('Something went wrong. Check the browser console.');
     }
     setSubscribing(false);
   }

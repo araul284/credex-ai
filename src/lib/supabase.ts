@@ -90,29 +90,42 @@ export async function loadAuditRow(id: string): Promise<{
     const audits = JSON.parse(localStorage.getItem('sw_audits') || '{}');
     const row = audits[id];
     if (!row) return null;
-    return { audit: row, pricingSnapshot: row.pricingSnapshot || {}, userEmail: row.userEmail || null };
+    return {
+      audit: row,
+      pricingSnapshot: row.pricingSnapshot || {},
+      userEmail: row.userEmail || null,
+    };
   }
-
+ 
   const { data, error } = await supabase
     .from('audits')
     .select('*')
     .eq('id', id)
     .single();
-
+ 
   if (error || !data) return null;
-
+ 
+  // Supabase can return JSON columns as strings or objects depending on
+  // the client version and column type. Parse safely either way.
+  function parseJsonField<T>(field: unknown): T {
+    if (typeof field === 'string') {
+      try { return JSON.parse(field) as T; } catch { return field as T; }
+    }
+    return field as T;
+  }
+ 
   return {
     audit: {
       id: data.id,
-      input: data.input,
-      findings: data.findings,
+      input: parseJsonField(data.input),
+      findings: parseJsonField(data.findings),
       totalMonthlySavings: data.total_monthly_savings,
       totalAnnualSavings: data.total_annual_savings,
       aiSummary: data.ai_summary,
       isOptimal: data.is_optimal,
       createdAt: data.created_at,
     },
-    pricingSnapshot: data.pricing_snapshot || {},
+    pricingSnapshot: parseJsonField(data.pricing_snapshot) || {},
     userEmail: data.user_email || null,
   };
 }
