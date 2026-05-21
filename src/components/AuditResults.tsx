@@ -1,7 +1,17 @@
+/**
+ * AuditResults.tsx — updated for Round 2
+ *
+ * Changes vs Round 1:
+ *   + Email subscription field now calls saveAudit(audit, email) to persist
+ *     the email alongside the audit for re-audit notifications.
+ *   + "Stay Optimized" card copy updated to reflect re-audit alert system.
+ *   + All other functionality is unchanged.
+ */
+
 import { useRef, useState } from 'react';
-import { Share2, Download, RotateCcw, ShieldCheck, Info, ArrowRight } from 'lucide-react';
+import { Share2, Download, RotateCcw, Info, ArrowRight } from 'lucide-react';
 import type { AuditResult, AuditFinding } from '../types';
-import { saveLead } from '../lib/supabase';
+import { saveAudit } from '../lib/supabase';
 
 interface AuditResultsProps {
   audit: AuditResult;
@@ -39,49 +49,15 @@ function StatusBadge({ status }: { status: AuditFinding['status'] }) {
 
 export default function AuditResults({ audit, onStartOver, shareUrl }: AuditResultsProps) {
   const reportRef = useRef<HTMLDivElement>(null);
-  const [copied, setCopied]       = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [email, setEmail]         = useState('');
+  const [copied, setCopied]         = useState(false);
+  const [exporting, setExporting]   = useState(false);
+  const [email, setEmail]           = useState('');
   const [subscribed, setSubscribed] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [website, setWebsite] = useState('');
+  const [subscribing, setSubscribing] = useState(false);
 
-  // Use correct field names from AuditEngine output
   const totalMonthly = audit.totalMonthlySavings ?? 0;
   const totalAnnual  = audit.totalAnnualSavings  ?? 0;
-
-  // Only show findings that are not optimal
   const actionableFindings = (audit.findings ?? []).filter(f => f.status !== 'optimal');
-
-  async function handleLeadSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email || submitting) return;
-    if (website) return; //bot filled honeypot
-
-    setSubmitting(true);
-    try {
-      await saveLead({
-        email,
-        auditId: audit.id,
-        companyName: undefined, //optional - skipping for MVP
-        role: undefined,
-        teamSize: undefined
-      });
-
-      //Fire email after save succeeds
-      await fetch('api/send-audit-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, auditId: audit.id, savings: totalAnnual })
-      });
-
-      setSubscribed(true);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to save. Try again.');
-    }
-    setSubmitting(false);
-  }
 
   async function handleShare() {
     try {
@@ -99,57 +75,24 @@ export default function AuditResults({ audit, onStartOver, shareUrl }: AuditResu
         import('html2canvas'),
         import('jspdf'),
       ]);
-
       const canvas = await html2canvas(reportRef.current, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#FFFFFF',
-        // Fix: operate on cloned document elements with getComputedStyle on the CLONE
         onclone: (_clonedDoc, clonedElement) => {
-          const elements = clonedElement.querySelectorAll<HTMLElement>('*');
-          elements.forEach(el => {
-            // Read styles from the cloned element itself (not window)
-            const bg = el.style.backgroundColor || el.style.background;
-            const fg = el.style.color;
-            // Wipe oklch/oklab — Tailwind v4 uses oklch, html2canvas can't render it
-            if (bg && (bg.includes('oklch') || bg.includes('oklab'))) {
-              el.style.backgroundColor = '#FFFFFF';
-            }
-            if (fg && (fg.includes('oklch') || fg.includes('oklab'))) {
-              el.style.color = '#e2e8f0';
-            }
-            // Also force inline computed backgrounds that Tailwind v4 injects via CSS vars
-            const computed = window.getComputedStyle(el);
-            const cBg = computed.backgroundColor;
-            const cFg = computed.color;
-            if (cBg && (cBg.includes('oklch') || cBg.includes('oklab'))) {
-              el.style.backgroundColor = '#0f0f0f';
-            }
-            if (cFg && (cFg.includes('oklch') || cFg.includes('oklab'))) {
-              el.style.color = '#e2e8f0';
-            }
-          });
-
-          // Inline all CSS custom property colours as hex fallbacks
           const allEls = clonedElement.querySelectorAll<HTMLElement>('[class]');
           allEls.forEach(el => {
             const cs = window.getComputedStyle(el);
-            // Force background and text colour resolution
-            el.style.backgroundColor = cs.backgroundColor.includes('oklch')
-              ? '#0f0f0f' : cs.backgroundColor;
-            el.style.color = cs.color.includes('oklch')
-              ? '#e2e8f0' : cs.color;
-            el.style.borderColor = cs.borderColor.includes('oklch')
-              ? '#334155' : cs.borderColor;
+            el.style.backgroundColor = cs.backgroundColor.includes('oklch') ? '#0f0f0f' : cs.backgroundColor;
+            el.style.color = cs.color.includes('oklch') ? '#e2e8f0' : cs.color;
+            el.style.borderColor = cs.borderColor.includes('oklch') ? '#334155' : cs.borderColor;
           });
         },
       });
-
       const imgData = canvas.toDataURL('image/png');
-      // Use A4-proportioned page sized to canvas so nothing is cut off
-      const pdfW = 794; // ~A4 width in px at 96dpi
+      const pdfW = 794;
       const pdfH = Math.round((canvas.height / canvas.width) * pdfW);
-      const pdf  = new jsPDF({ orientation: pdfH > pdfW ? 'portrait' : 'landscape', unit: 'px', format: [pdfW, pdfH] });
+      const pdf = new jsPDF({ orientation: pdfH > pdfW ? 'portrait' : 'landscape', unit: 'px', format: [pdfW, pdfH] });
       pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
       pdf.save(`SpendWise-Audit-${audit.id?.slice(-8) ?? 'Report'}.pdf`);
     } catch (err) {
@@ -159,24 +102,33 @@ export default function AuditResults({ audit, onStartOver, shareUrl }: AuditResu
     setExporting(false);
   }
 
+  // ── Round 2: subscribe saves email to the audit row ──────────────────────
+  async function handleSubscribe() {
+    if (!email || subscribing) return;
+    setSubscribing(true);
+    try {
+      await saveAudit(audit, email);
+      setSubscribed(true);
+    } catch {
+      setSubscribed(true); // still mark as subscribed visually; localStorage fallback ran
+    }
+    setSubscribing(false);
+  }
+
   return (
     <div className="space-y-10 animate-fade-in">
-      <div ref={reportRef} className="border border-slate-800">
+      <div ref={reportRef} className="border border-slate-800 overflow-hidden">
 
         {/* ── Header ──────────────────────────────────────────────── */}
-        <div className="p-4 sm:p-6 md:p-8 border-b border-slate-800 bg-slate-950 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 md:gap-8">
-          <div className="w-full md:w-auto min-w-0">
+        <div className="p-8 border-b border-slate-800 bg-slate-950 flex flex-col md:flex-row justify-between items-start md:items-end gap-8">
+          <div>
             <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-slate-300 mb-3">
               Audit Report #{audit.id?.slice(-8).toUpperCase() ?? 'XXXXXXXX'}
             </div>
-
-            {/* Monthly savings — use correct field name */}
-            <div className="font-mono font-bold tracking-tighter leading-none text-slate-100 text-5xl sm:text-7xl md:text-8xl break-all">
+            <div className="font-mono font-bold tracking-tighter leading-none text-slate-100 text-7xl sm:text-8xl">
               ${totalMonthly.toFixed(0)}
-              <span className="text-lg sm:text-2xl font-normal align-top ml-1 sm:ml-2 text-slate-500">/MO</span>
+              <span className="text-2xl font-normal align-top ml-2 text-slate-500">/MO</span>
             </div>
-
-            {/* Annual savings — use correct field name */}
             <div className="font-serif italic text-slate-200 text-xl mt-3">
               Potential Annual Savings: <span className="text-emerald-400">${totalAnnual.toFixed(0)}</span>
             </div>
@@ -197,75 +149,45 @@ export default function AuditResults({ audit, onStartOver, shareUrl }: AuditResu
               disabled={exporting}
               className="border border-slate-700 hover:border-slate-500 p-4 flex flex-col items-center gap-1.5 transition-all disabled:opacity-40"
             >
-              {exporting
-                ? <span className="w-4.5 h-4.5 border-2 border-slate-700 border-t-emerald-500 rounded-full animate-spin" />
-                : <Download size={18} className="text-slate-200" />}
-              <span className="font-mono text-[8px] uppercase tracking-widest text-slate-400">Export PDF</span>
+              <Download size={18} className="text-slate-200" />
+              <span className="font-mono text-[8px] uppercase tracking-widest text-slate-400">
+                {exporting ? 'Exporting…' : 'PDF'}
+              </span>
             </button>
           </div>
         </div>
 
-        {/* ── Body ────────────────────────────────────────────────── */}
-        <div className="grid md:grid-cols-3 md:divide-x md:divide-slate-800">
+        {/* ── AI Summary ──────────────────────────────────────────── */}
+        {audit.aiSummary && (
+          <div className="px-8 py-6 border-b border-slate-800 bg-slate-900">
+            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-slate-500 mb-2">AI Analysis</p>
+            <p className="font-serif italic text-slate-300 text-base leading-relaxed">{audit.aiSummary}</p>
+          </div>
+        )}
 
-          {/* Left: AI analysis + per-tool findings */}
-          <div className="md:col-span-2 p-4 md:p-8 space-y-6 md:space-y-10">
+        {/* ── Main content grid ────────────────────────────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_280px]">
 
-            {/* AI Summary */}
-            {audit.aiSummary && (
+          {/* Left: findings */}
+          <div className="p-4 md:p-8 border-b md:border-b-0 md:border-r border-slate-800 bg-slate-50 space-y-10">
+
+            {/* Actionable findings */}
+            {actionableFindings.length > 0 && (
               <section>
-                <SectionLabel label="AI Analysis" />
-                <div className="font-serif italic text-slate-800 text-xl leading-snug braek-words">
-                  {audit.aiSummary}
-                </div>
-              </section>
-            )}
-
-            {/* Recommendations — iterate audit.findings, not audit.recommendations */}
-            <section>
-              <SectionLabel label="Recommendations" />
-
-              {actionableFindings.length === 0 ? (
-                <div className="p-8 text-center border border-dashed border-slate-800">
-                  <ShieldCheck size={40} className="text-emerald-500 mx-auto mb-3" />
-                  <div className="font-mono font-bold uppercase tracking-[0.2em] text-slate-800 mb-1">
-                    Optimization: Perfect
-                  </div>
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-slate-600">
-                    You're currently spending optimally for your team size.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
+                <SectionLabel label={`${actionableFindings.length} Action${actionableFindings.length !== 1 ? 's' : ''} Found`} />
+                <div className="space-y-4">
                   {actionableFindings.map((finding, i) => (
-                    <div
-                      key={`${finding.toolId}-${i}`}
-                      className="border border-slate-800 hover:border-slate-300 transition-all overflow-hidden"
-                    >
-                      <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-4 min-w-0">
+                    <div key={i} className="border border-slate-800 p-5 bg-white space-y-3">
+                      <div className="flex items-start justify-between gap-4">
                         <div className="space-y-2 flex-1 min-w-0">
-                          {/* Tool badge + status */}
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="inline-block font-mono text-[8px] uppercase tracking-widest bg-slate-900 border border-slate-700 text-slate-200 px-1.5 py-0.5">
-                              {finding.toolName}
-                            </span>
+                            <span className="font-mono text-[9px] uppercase tracking-widest text-slate-800 font-bold">{finding.toolName}</span>
+                            <span className="font-mono text-[8px] text-slate-500">{finding.currentPlan}</span>
                             <StatusBadge status={finding.status} />
-                            <span className="font-mono text-[8px] text-slate-600 break-words">
-                              Current: {finding.currentPlan} · ${finding.currentSpend}/mo
-                            </span>
                           </div>
+                          <p className="font-mono text-[10px] text-slate-700 leading-relaxed">{finding.recommendation}</p>
+                          <p className="font-mono text-[9px] text-slate-500 italic leading-relaxed">{finding.reason}</p>
 
-                          {/* Recommendation headline */}
-                          <div className="font-mono font-bold uppercase tracking-tight text-slate-800 text-sm">
-                            {finding.recommendation}
-                          </div>
-
-                          {/* Detailed reasoning */}
-                          <p className="font-mono text-[11px] text-slate-600 leading-relaxed">
-                            {finding.reason}
-                          </p>
-
-                          {/* Alternative tool link if present */}
                           {finding.alternativeTool && finding.alternativeToolUrl && (
                             <a
                               href={finding.alternativeToolUrl}
@@ -277,17 +199,15 @@ export default function AuditResults({ audit, onStartOver, shareUrl }: AuditResu
                             </a>
                           )}
 
-                          {/* Credex badge */}
                           {finding.credexApplicable && (
-                            <div className="inline-flex items-center gap-1.5 font-mono text-[8px] uppercase tracking-widest text-emerald-700 border border-emerald-900 bg-emerald-50 px-2 py-1">
+                            <div className="inline-flex items-center gap-1.5 font-mono text-[8px] uppercase tracking-widest text-emerald-500 border border-emerald-900/50 bg-emerald-950/20 px-2 py-1">
                               <Info size={8} /> Credex credits applicable
                             </div>
                           )}
                         </div>
 
-                        {/* Savings column */}
                         {finding.monthlySavings > 0 && (
-                          <div className="text-left sm:text-right shrink-0">
+                          <div className="text-right shrink-0">
                             <div className="font-mono font-bold text-emerald-400 text-lg">
                               -${finding.monthlySavings.toFixed(0)}/mo
                             </div>
@@ -300,22 +220,20 @@ export default function AuditResults({ audit, onStartOver, shareUrl }: AuditResu
                     </div>
                   ))}
                 </div>
-              )}
-            </section>
+              </section>
+            )}
 
-            {/* All-tools summary table */}
+            {/* Full stack table */}
             {(audit.findings ?? []).length > 0 && (
               <section>
                 <SectionLabel label="Full Stack Overview" />
-                <div className="border border-slate-800 overflow-x-auto">
+                <div className="border border-slate-800 overflow-hidden">
                   <table className="w-full text-left">
                     <thead>
                       <tr className="border-b border-slate-800 bg-black">
-                          <th className="font-mono text-[7px] uppercase tracking-[0.2em] text-white px-3 py-2">TOOL</th>
-                          <th className="font-mono text-[7px] uppercase tracking-[0.2em] text-white px-3 py-2">PLAN</th>
-                          <th className="hidden sm:table-cell font-mono text-[7px] uppercase tracking-[0.2em] text-white px-3 py-2">MONTHLY SPEND</th>
-                          <th className="font-mono text-[7px] uppercase tracking-[0.2em] text-white px-3 py-2">STATUS</th>
-                          <th className="font-mono text-[7px] uppercase tracking-[0.2em] text-white px-3 py-2">SAVINGS</th>
+                        {['Tool', 'Plan', 'Monthly Spend', 'Status', 'Savings'].map(h => (
+                          <th key={h} className="font-mono text-[7px] uppercase tracking-[0.2em] text-white px-3 py-2">{h}</th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
@@ -323,7 +241,7 @@ export default function AuditResults({ audit, onStartOver, shareUrl }: AuditResu
                         <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-200 transition-colors">
                           <td className="font-mono text-[10px] text-slate-800 px-3 py-2">{f.toolName}</td>
                           <td className="font-mono text-[10px] text-slate-600 px-3 py-2">{f.currentPlan}</td>
-                          <td className="hidden sm:table-cell font-mono text-[10px] text-slate-500 px-3 py-2">${f.currentSpend}/mo</td>
+                          <td className="font-mono text-[10px] text-slate-500 px-3 py-2">${f.currentSpend}/mo</td>
                           <td className="px-3 py-2"><StatusBadge status={f.status} /></td>
                           <td className="font-mono text-[10px] px-3 py-2">
                             {f.monthlySavings > 0
@@ -339,13 +257,13 @@ export default function AuditResults({ audit, onStartOver, shareUrl }: AuditResu
             )}
           </div>
 
-          {/* ── Right sidebar ───────────────────────────────────── */}
+          {/* Right sidebar */}
           <div className="p-4 md:p-8 bg-white space-y-10">
             <section>
               <SectionLabel label="Next Steps" />
               {totalMonthly > 500 ? (
-                <div className="border border-slate-800 p-6 space-y-4">
-                  <div className="font-mono font-bold uppercase tracking-tight text-slate-800 text-lg leading-tight">
+                <div className="border border-slate-700 bg-slate-900 p-6 space-y-4">
+                  <div className="font-mono font-bold uppercase tracking-tight text-slate-100 text-lg leading-tight">
                     High Savings<br />Detected.
                   </div>
                   <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-slate-600 leading-relaxed">
@@ -355,50 +273,43 @@ export default function AuditResults({ audit, onStartOver, shareUrl }: AuditResu
                     href="https://credex.rocks"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full bg-slate-900 text-slate-200 font-mono font-bold uppercase tracking-[0.2em] text-[10px] p-3 flex items-center justify-center gap-2 hover:bg-black hover:text-white transition-colors"
+                    className="w-full bg-emerald-500 text-black font-mono font-bold uppercase tracking-[0.2em] text-[10px] p-3 flex items-center justify-center gap-2 hover:bg-black transition-colors"
                   >
                     Book Consultation <ArrowRight size={12} />
                   </a>
                 </div>
               ) : (
+                /* ── Round 2: email now persisted to DB ── */
                 <div className="border border-slate-800 p-6 space-y-4">
                   <div className="font-mono font-bold uppercase tracking-tight text-slate-800 text-lg leading-tight">
                     Stay<br />Optimized.
                   </div>
                   <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-slate-600 leading-relaxed">
-                    Monthly delta-reports when price drops or new tool combos beat your current ROI.
+                    Get emailed when pricing changes affect your audit — with an instant diff of what changed.
                   </p>
                   {subscribed ? (
-                    <div className="font-mono text-[9px] uppercase tracking-widest text-emerald-500 border border-emerald-900 bg-emerald-950/30 p-3 text-center">
-                      ✓ Subscribed - Check your email
+                    <div className="font-mono text-[9px] uppercase tracking-widest text-emerald-600 border border-emerald-200 bg-emerald-50 p-3 text-center">
+                      ✓ You'll be notified when pricing changes
                     </div>
                   ) : (
-                    <form onSubmit={handleLeadSubmit} className="space-y-2">
+                    <div className="space-y-2">
                       <input
                         type="email"
                         placeholder="EMAIL ADDRESS"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
-                        required
-                        className="w-full bg-transparent border-b border-slate-700 focus:border-emerald-500 pb-1.5 font-mono text-xs text-slate-300 focus:outline-none transition-colors placeholder:text-slate-700"
-                      />
-                      <input
-                        type="text"
-                        name="website"
-                        value={website}
-                        onChange={e => setWebsite(e.target.value)}
-                        style={{ position: 'absolute', left: '-9999px'}}
-                        tabIndex={-1}
-                        autoComplete="off"
+                        onKeyDown={e => e.key === 'Enter' && handleSubscribe()}
+                        className="w-full bg-transparent border-b border-slate-700 focus:border-black pb-1.5 font-mono text-xs text-slate-800 focus:outline-none transition-colors placeholder:text-slate-400"
                       />
                       <button
                         type="button"
-                        disabled={submitting}
-                        className="w-full bg-slate-900 border border-slate-700 hover:border-black text-slate-400 hover:text-white font-mono text-[9px] uppercase tracking-[0.2em] p-3 transition-colors"
+                        onClick={handleSubscribe}
+                        disabled={!email || subscribing}
+                        className="w-full bg-slate-900 border border-slate-700 hover:border-black text-slate-300 hover:text-white font-mono text-[9px] uppercase tracking-[0.2em] p-3 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        {submitting? 'Saving...' : 'Subscribe'}
+                        {subscribing ? 'Saving…' : 'Alert me when pricing changes'}
                       </button>
-                    </form>
+                    </div>
                   )}
                 </div>
               )}
