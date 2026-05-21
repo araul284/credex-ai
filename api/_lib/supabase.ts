@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { AuditResult } from '../../src/types';
-import { TOOLS } from '../../src/data/tools';
+import { TOOLS } from '../../src/data/tools.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;

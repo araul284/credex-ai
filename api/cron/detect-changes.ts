@@ -13,7 +13,7 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { runPricingChangeDetection } from '../_lib/pricingDetector';
+import { runPricingChangeDetection } from '../_lib/pricingDetector.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow POST (Vercel Cron sends GET, so allow both)

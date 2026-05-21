@@ -1,8 +1,8 @@
-import { TOOLS } from '../../src/data/tools';
+import { TOOLS } from '../../src/data/tools.js';
 import type { AuditResult } from '../../src/types';
-import { runAudit } from '../../src/lib/AuditEngine';
+import { runAudit } from '../../src/lib/AuditEngine.js';
 import { getAllAuditsWithEmail, markEmailSent, capturePricingSnapshot } from './supabase';
-import { sendReAuditEmail } from '../../src/lib/email';
+import { sendReAuditEmail } from '../../src/lib/email.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
