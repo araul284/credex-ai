@@ -2,6 +2,7 @@
   "name": "spendwise",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -13,7 +14,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^20.19.41",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-router-dom": "^5.3.3",
@@ -30,10 +31,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
+    "@vercel/node": "^5.8.3",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.14.0",
     "react-router-dom": "^7.15.0"
   }
 }
-
