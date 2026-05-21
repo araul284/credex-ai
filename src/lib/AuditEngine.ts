@@ -1,5 +1,5 @@
-import type { AuditInput, AuditFinding, AuditResult, ToolEntry, UseCase } from '../types';
-import { TOOL_MAP } from '../data/tools';
+import type { AuditInput, AuditFinding, AuditResult, ToolEntry, UseCase } from '../types/index.js';
+import { TOOL_MAP } from '../data/tools.js';
 import { nanoid } from 'nanoid';
 
 // ─── Helper: calculate effective monthly cost ───────────────────────────────
