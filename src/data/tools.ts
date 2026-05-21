@@ -14,7 +14,7 @@ export const TOOLS: ToolDefinition[] = [
     pricingUrl: 'https://cursor.sh/pricing',
     plans: [
       { id: 'hobby', name: 'Hobby', pricePerSeat: 0, features: ['2000 completions/mo', '50 slow requests'], useCaseFit: ['coding'] },
-      { id: 'pro', name: 'Pro', pricePerSeat: 20, features: ['Unlimited completions', '500 fast requests', 'GPT-4 access'], useCaseFit: ['coding'] },
+      { id: 'pro', name: 'Pro', pricePerSeat: 25, features: ['Unlimited completions', '500 fast requests', 'GPT-4 access'], useCaseFit: ['coding'] },
       { id: 'business', name: 'Business', pricePerSeat: 40, features: ['All Pro', 'Team features', 'Admin panel', 'SSO'], useCaseFit: ['coding'] },
       { id: 'enterprise', name: 'Enterprise', pricePerSeat: 0, features: ['Custom pricing', 'Dedicated support'], useCaseFit: ['coding'] },
     ],
