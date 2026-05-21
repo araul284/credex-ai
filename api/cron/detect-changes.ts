@@ -16,16 +16,14 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { runPricingChangeDetection } from '../_lib/pricingDetector.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Only allow POST (Vercel Cron sends GET, so allow both)
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Auth: check CRON_SECRET (set in Vercel env vars)
+  // Auth check — skip if CRON_SECRET not set (local dev)
   const secret = process.env.CRON_SECRET;
   if (secret) {
     const authHeader = req.headers.authorization;
-    // Vercel Cron automatically sends the secret; manual callers must provide it
     const provided = authHeader?.replace('Bearer ', '') ?? req.query.secret;
     if (provided !== secret) {
       return res.status(401).json({ error: 'Unauthorized' });

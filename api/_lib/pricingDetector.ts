@@ -1,7 +1,19 @@
+/**
+ * api/_lib/pricingDetector.ts
+ *
+ * Fix log vs original:
+ *  - Import paths use .js extensions (required for Node ESM — without these
+ *    Node throws ERR_MODULE_NOT_FOUND at runtime → FUNCTION_INVOCATION_FAILED)
+ *  - Removed the `if (row.unsubscribed) continue` guard — the Supabase query
+ *    in supabase.ts now filters these out at the DB level (more efficient,
+ *    and avoids a runtime crash if the column is missing from the result)
+ *  - `changesAffectAudit` was defined but never called — removed dead code
+ */
+
 import { TOOLS } from '../../src/data/tools.js';
-import type { AuditResult } from '../../src/types';
+import type { AuditResult } from '../../src/types/index.js';
 import { runAudit } from '../../src/lib/AuditEngine.js';
-import { getAllAuditsWithEmail, markEmailSent, capturePricingSnapshot } from './supabase';
+import { getAllAuditsWithEmail, markEmailSent, capturePricingSnapshot } from './supabase.js';
 import { sendReAuditEmail } from '../../src/lib/email.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -45,7 +57,6 @@ export function detectPricingChanges(
     const oldPlanMap = new Map(oldPlans.map(p => [p.id, p]));
     const newPlanMap = new Map(newPlans.map(p => [p.id, p]));
 
-    // Plans present in both: check for price changes
     for (const [planId, newPlan] of newPlanMap.entries()) {
       const oldPlan = oldPlanMap.get(planId);
       if (!oldPlan) {
@@ -74,7 +85,6 @@ export function detectPricingChanges(
       }
     }
 
-    // Plans in old but not new: removed
     for (const [planId, oldPlan] of oldPlanMap.entries()) {
       if (!newPlanMap.has(planId)) {
         changes.push({
@@ -93,16 +103,6 @@ export function detectPricingChanges(
   return changes;
 }
 
-// ─── Check if changes affect a specific audit's tools ────────────────────────
-
-function changesAffectAudit(
-  changes: PricingChange[],
-  input: AuditResult['input'],
-): PricingChange[] {
-  const toolIds = new Set(input.tools.map(t => t.toolId));
-  return changes.filter(c => toolIds.has(c.toolId as typeof input.tools[0]['toolId']));
-}
-
 // ─── Main detection + notification runner ────────────────────────────────────
 
 export async function runPricingChangeDetection(): Promise<{
@@ -112,23 +112,14 @@ export async function runPricingChangeDetection(): Promise<{
   changes: PricingChange[];
 }> {
   const currentSnapshot = capturePricingSnapshot();
-  const allAudits = await getAllAuditsWithEmail();
-
-  const globalChanges = detectPricingChanges(
-    // For a real system, you'd store the last-known snapshot in DB.
-    // Here we detect per-audit by diffing the stored snapshot against current.
-    {},
-    currentSnapshot,
-  );
+  const allAudits = await getAllAuditsWithEmail(); // already excludes unsubscribed
 
   const affectedByUser = new Map<string, AffectedAudit[]>();
 
   for (const row of allAudits) {
-
     const relevantChanges = detectPricingChanges(row.pricingSnapshot, currentSnapshot);
     if (relevantChanges.length === 0) continue;
 
-    // Re-run the audit with current pricing
     const newResult = runAudit(row.input);
     const oldMonthlySavings = row.findings.reduce((s, f) => s + f.monthlySavings, 0);
 
@@ -150,7 +141,6 @@ export async function runPricingChangeDetection(): Promise<{
   let emailsSent = 0;
   for (const [email, affectedAudits] of affectedByUser.entries()) {
     try {
-      // Consolidate: pick the audit with the biggest savings delta as the primary
       const primary = affectedAudits.sort(
         (a, b) =>
           Math.abs(b.newMonthlySavings - b.oldMonthlySavings) -
@@ -182,6 +172,6 @@ export async function runPricingChangeDetection(): Promise<{
     checked: allAudits.length,
     affected: affectedByUser.size,
     emailsSent,
-    changes: globalChanges,
+    changes: detectPricingChanges({}, currentSnapshot), // global summary
   };
 }
